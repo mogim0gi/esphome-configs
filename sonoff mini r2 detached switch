@@ -1,0 +1,176 @@
+# Basic config
+
+substitutions:
+  device_name: SonoffMini
+
+
+esphome:
+  name: sonoff_mini_detached
+  platform: ESP8266
+  board: esp01_1m
+
+# Enable logging
+logger: 
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "bla"
+  reboot_timeout: 0s
+
+
+ota:
+  - platform: esphome
+    password: "bla"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: ${device_name} Hotspot
+    password: "bla"
+
+captive_portal:
+
+# the web_server & sensor components can be removed without affecting core functionaility.
+
+web_server:
+  port: 80
+
+text_sensor:
+  - platform: version
+    name: ${device_name} ESPHome Version
+  - platform: wifi_info
+    ip_address:
+      name: ${device_name} IP
+    ssid:
+      name: ${device_name} SSID
+    bssid:
+      name: ${device_name} BSSID
+
+sensor:
+  - platform: uptime
+    name: ${device_name} Uptime
+  - platform: wifi_signal
+    name: ${device_name} WiFi Signal
+    update_interval: 60s
+
+#######################################
+# Device specific Config Begins Below #
+#######################################
+
+binary_sensor:
+  - platform: gpio
+    pin: GPIO00
+    id: reset
+    internal: true
+    filters:
+      - invert:
+      - delayed_off: 10ms
+    on_press:
+      - switch.toggle:
+          id: relay_1
+
+  - platform: gpio
+    name: ${device_name}_button
+    pin: 
+      number: GPIO04
+      inverted: true
+    id: _button
+
+    # config for multi click actions
+    on_multi_click:
+      # double click
+      - timing:
+          - ON for at most 1s
+          - OFF for at most 1s
+          - ON for at most 1s
+          - OFF for at least 0.2s
+        then:
+          - if:
+              condition:
+                and:
+                  - wifi.connected:
+                  - api.connected:
+              # send double click event in case wifi and api are conncected
+              then:
+                - homeassistant.event:
+                    event: esphome.button_pressed
+                    data:
+                      title: sonoff ${device_name} double click
+              # toggle relay in case either wifi or api are not connected
+              else:
+                - switch.toggle:
+                    id: relay_1
+        # long click
+      - timing:
+          - ON for at least 1.1s
+        then:
+          - if:
+              condition:
+                and:
+                  - wifi.connected:
+                  - api.connected:
+              # send long click event in case wifi and api are conncected
+              then:
+                - homeassistant.event:
+                    event: esphome.button_pressed
+                    data:
+                      title: sonoff ${device_name} long click
+              # toggle relay in case either wifi or api are not connected
+              else:
+                - switch.toggle:
+                    id: relay_1
+        # single click
+      - timing:
+          - ON for at most 1s
+          - OFF for at least 0.5s
+        then:
+          - if:
+              condition:
+                and:
+                  - wifi.connected:
+                  - api.connected:
+              # send single click event in case wifi and api are conncected
+              then:
+                - homeassistant.event:
+                    event: esphome.button_pressed
+                    data:
+                      title: sonoff ${device_name} short click
+              # toggle relay in case either wifi or api are not connected
+              else:
+                - switch.toggle:
+                    id: relay_1
+
+
+
+switch:
+  - platform: gpio
+    name: ${device_name}_switch
+    icon: "mdi:lightbulb_outline"
+    pin: GPIO12
+    id: relay_1
+    restore_mode: restore_default_off
+
+status_led:
+  pin:
+    number: GPIO13
+    allow_other_uses: true
+    inverted: true
+
+output:
+  - platform: esp8266_pwm
+    id: blue_led
+    pin:
+      number: GPIO13
+      allow_other_uses: true
+    inverted: True
+
+light:
+  # the 4 lines below define the Blue LED light on Sonoff Mini, to expose in HomeAssistant remove line "internal: true"
+  - platform: monochromatic
+    name: ${device_name}_blueled
+    output: blue_led
+    internal: true # hides the Blue LED from HomeAssistant
